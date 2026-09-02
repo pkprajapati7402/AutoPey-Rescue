@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from src.diagnosis import diagnose
 from src.policy import decide_action
 from src.guardrails import is_action_allowed, check_global_cap
-from src.outreach import draft_nudge, parse_promise_to_pay
+from src.outreach import draft_nudge, parse_promise_to_pay, _fallback_draft_nudge, _fallback_parse_promise
 from src.audit import log_decision, clear_audit_trail
 from src.escalation import classify_escalation, log_escalation, clear_escalation_queue
 from src.baseline import run_baseline
@@ -86,6 +86,7 @@ def run_system_pipeline(
     seed: int = 42,
     log_path: str = "logs/audit_trail.jsonl",
     escalation_log_path: str = "logs/escalation_queue.jsonl",
+    live_llm_calls: int = 5,
 ) -> List[Dict[str, Any]]:
     """Execute the full AutoPey-Rescue intelligence pipeline on transactions.
 
@@ -94,6 +95,7 @@ def run_system_pipeline(
         seed: Random seed for deterministic simulation.
         log_path: Filepath for audit trail.
         escalation_log_path: Filepath for escalation queue.
+        live_llm_calls: Number of sample records to draft via live LLM API (rest use smart fallback).
 
     Returns:
         List of systemic outcome dictionaries per transaction.
@@ -170,7 +172,11 @@ def run_system_pipeline(
                 msg = None
                 if policy_decision["action"] in ["HOLD_AND_NUDGE", "REAUTH_LINK"]:
                     if check_global_cap(nudges_sent_count, cap=200):
-                        msg = draft_nudge(txn)
+                        # Use live LLM for sample records, fast contextual fallback for batch throughput
+                        if live_llm_calls is not None and nudges_sent_count < live_llm_calls:
+                            msg = draft_nudge(txn)
+                        else:
+                            msg = _fallback_draft_nudge(txn)
                         nudges_sent_count += 1
                         contacts_sent += 1
                         last_outreach_msg = msg
@@ -186,8 +192,11 @@ def run_system_pipeline(
                             chosen_status = rng.choices(statuses, weights=weights, k=1)[0]
                             simulated_reply = _simulate_customer_reply(rng, chosen_status)
 
-                            # Parse intent (uses LLM if available, fallback otherwise)
-                            promise_result = parse_promise_to_pay(simulated_reply)
+                            # Parse intent (uses LLM for initial sample, fallback otherwise)
+                            if live_llm_calls is not None and nudges_sent_count <= live_llm_calls:
+                                promise_result = parse_promise_to_pay(simulated_reply)
+                            else:
+                                promise_result = _fallback_parse_promise(simulated_reply)
                             promise_to_pay_status = promise_result.get("status")
 
                             # Classify escalation path
@@ -384,6 +393,7 @@ def main():
     parser.add_argument("--escalation-log", type=str, default="logs/escalation_queue.jsonl", help="Escalation queue JSONL path")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for simulation reproducibility")
     parser.add_argument("--count", type=int, default=200, help="Number of records to generate if data missing")
+    parser.add_argument("--live-llm-calls", type=int, default=5, help="Number of real LLM calls to execute during batch (default: 5)")
     args = parser.parse_args()
 
     # Load or generate transactions
@@ -402,6 +412,7 @@ def main():
         seed=args.seed,
         log_path=args.audit_log,
         escalation_log_path=args.escalation_log,
+        live_llm_calls=args.live_llm_calls,
     )
     system_metrics = compute_metrics(system_outcomes)
     system_category_breakdown = compute_category_breakdown(system_outcomes)

@@ -31,8 +31,12 @@ def test_baseline_pipeline_execution():
     assert metrics["recovery_rate_pct"] >= 0.0
 
 
-def test_system_pipeline_execution():
+def test_system_pipeline_execution(monkeypatch):
     """Verify systemic intelligent pipeline runs, logs decisions, and adheres to limits."""
+    # Ensure automated tests run offline and deterministically without burning API credits
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    monkeypatch.setenv("GOOGLE_API_KEY", "")
+
     sample_txns = generate_synthetic_transactions(count=20, seed=42)
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
         tmp_log = tmp.name

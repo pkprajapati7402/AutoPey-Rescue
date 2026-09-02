@@ -3,6 +3,7 @@
 This module is the ONLY component in AutoPey-Rescue that leverages LLMs.
 It supports:
 1. Google Gemini API (via google-genai SDK — GEMINI_API_KEY / GOOGLE_API_KEY)
+   Model: gemini-3.6-flash / gemini-flash-latest
 2. Optional OpenAI API (OPENAI_API_KEY)
 3. Optional Anthropic API (ANTHROPIC_API_KEY)
 4. Offline / No-API-Key fallback mode for resilient automated tests and offline simulation.
@@ -20,6 +21,10 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# In-memory caches to prevent redundant API calls and rate-limiting
+_NUDGE_CACHE: Dict[str, str] = {}
+_PROMISE_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
 def _get_api_provider() -> tuple[Optional[str], Optional[str]]:
@@ -40,7 +45,7 @@ def _get_api_provider() -> tuple[Optional[str], Optional[str]]:
 
 
 def _fallback_draft_nudge(transaction: Dict[str, Any]) -> str:
-    """Deterministic fallback Hinglish reminder when no API key is present."""
+    """Deterministic fallback Hinglish reminder when no API key is present or on API error."""
     customer_name = transaction.get("customer_name", "Customer")
     first_name = customer_name.split()[0] if customer_name else "Customer"
     amount = transaction.get("amount_inr", 499)
@@ -76,15 +81,17 @@ def _fallback_draft_nudge(transaction: Dict[str, Any]) -> str:
 
 
 def _fallback_parse_promise(reply: str) -> Dict[str, Any]:
-    """Deterministic heuristic fallback intent parser for offline testing."""
+    """Deterministic heuristic fallback intent parser for offline testing or API errors."""
     if not reply or not isinstance(reply, str):
         return {"status": "UNCLEAR", "promised_date": None}
 
     lower = reply.lower().strip()
 
     # Decline indicators
-    decline_words = ["cancel", "cancelled", "band karo", "nahi chahiye", "stop", "no thanks",
-                     "mat karo", "not interested", "refund", "fraud", "block karo", "deactivate"]
+    decline_words = [
+        "cancel", "cancelled", "band karo", "nahi chahiye", "stop", "no thanks",
+        "mat karo", "not interested", "refund", "fraud", "block karo", "deactivate"
+    ]
     promise_words = [
         "kal", "tomorrow", "shaam", "evening", "aaj", "today", "kar dunga", "karta hu",
         "pay karunga", "salary", "pay later", "will pay", "5th", "1st", "10th", "15th",
@@ -114,16 +121,20 @@ def draft_nudge(transaction: Dict[str, Any]) -> str:
     Returns:
         Hinglish message text under 300 characters.
     """
-    provider, api_key = _get_api_provider()
-
-    if not provider or not api_key:
-        return _fallback_draft_nudge(transaction)
-
     customer_name = transaction.get("customer_name", "Customer")
     first_name = customer_name.split()[0] if customer_name else "Customer"
     amount = transaction.get("amount_inr", 499)
     due_date = transaction.get("due_date", "recently")
     failure_code = transaction.get("failure_code", "UNKNOWN")
+
+    cache_key = f"{first_name}_{amount}_{due_date}_{failure_code}"
+    if cache_key in _NUDGE_CACHE:
+        return _NUDGE_CACHE[cache_key]
+
+    provider, api_key = _get_api_provider()
+
+    if not provider or not api_key:
+        return _fallback_draft_nudge(transaction)
 
     # Contextualize prompt based on failure type
     context_map = {
@@ -150,13 +161,38 @@ def draft_nudge(transaction: Dict[str, Any]) -> str:
     try:
         if provider == "gemini":
             from google import genai as google_genai
-            client = google_genai.Client(api_key=api_key)
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt
+            from google.genai import types
+
+            client = google_genai.Client(
+                api_key=api_key,
+                http_options=types.HttpOptions(timeout=5000)
             )
-            text = response.text.strip() if response.text else ""
-            return text[:299] if text else _fallback_draft_nudge(transaction)
+            config = types.GenerateContentConfig(
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+                temperature=0.3,
+                max_output_tokens=100,
+            )
+
+            # Try primary active model, fallback to flash-latest if unavailable
+            response = None
+            for model_name in ["gemini-3.6-flash", "gemini-flash-latest"]:
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=config
+                    )
+                    if response and response.text:
+                        break
+                except Exception:
+                    continue
+
+            text = response.text.strip() if (response and response.text) else ""
+            if text:
+                res = text[:299]
+                _NUDGE_CACHE[cache_key] = res
+                return res
+            return _fallback_draft_nudge(transaction)
 
         elif provider == "openai":
             import requests
@@ -167,10 +203,12 @@ def draft_nudge(transaction: Dict[str, Any]) -> str:
                 "max_tokens": 100,
                 "temperature": 0.4
             }
-            resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=10)
+            resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=6)
             if resp.status_code == 200:
                 text = resp.json()["choices"][0]["message"]["content"].strip()
-                return text[:299]
+                res = text[:299]
+                _NUDGE_CACHE[cache_key] = res
+                return res
 
         elif provider == "anthropic":
             import requests
@@ -184,10 +222,12 @@ def draft_nudge(transaction: Dict[str, Any]) -> str:
                 "max_tokens": 100,
                 "messages": [{"role": "user", "content": prompt}]
             }
-            resp = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload, timeout=10)
+            resp = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload, timeout=6)
             if resp.status_code == 200:
                 text = resp.json()["content"][0]["text"].strip()
-                return text[:299]
+                res = text[:299]
+                _NUDGE_CACHE[cache_key] = res
+                return res
 
     except Exception:
         # Graceful fallback on any network or API error
@@ -210,6 +250,10 @@ def parse_promise_to_pay(customer_reply: str) -> Dict[str, Any]:
     if not customer_reply or not isinstance(customer_reply, str):
         return {"status": "UNCLEAR", "promised_date": None}
 
+    cache_key = customer_reply.strip()
+    if cache_key in _PROMISE_CACHE:
+        return _PROMISE_CACHE[cache_key]
+
     provider, api_key = _get_api_provider()
 
     if not provider or not api_key:
@@ -229,20 +273,41 @@ def parse_promise_to_pay(customer_reply: str) -> Dict[str, Any]:
     try:
         if provider == "gemini":
             from google import genai as google_genai
-            client = google_genai.Client(api_key=api_key)
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt
+            from google.genai import types
+
+            client = google_genai.Client(
+                api_key=api_key,
+                http_options=types.HttpOptions(timeout=5000)
             )
-            raw_text = response.text.strip() if response.text else ""
-            # Clean markdown codeblocks if present
+            config = types.GenerateContentConfig(
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+                response_mime_type="application/json",
+                temperature=0.1,
+            )
+
+            response = None
+            for model_name in ["gemini-3.6-flash", "gemini-flash-latest"]:
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=config
+                    )
+                    if response and response.text:
+                        break
+                except Exception:
+                    continue
+
+            raw_text = response.text.strip() if (response and response.text) else ""
             cleaned = re.sub(r"^```json\s*", "", raw_text, flags=re.MULTILINE)
             cleaned = re.sub(r"^```\s*", "", cleaned, flags=re.MULTILINE).strip()
             parsed = json.loads(cleaned)
             status = parsed.get("status", "UNCLEAR").upper()
             if status not in ["PROMISED", "DECLINED", "UNCLEAR"]:
                 status = "UNCLEAR"
-            return {"status": status, "promised_date": parsed.get("promised_date")}
+            res = {"status": status, "promised_date": parsed.get("promised_date")}
+            _PROMISE_CACHE[cache_key] = res
+            return res
 
         elif provider == "openai":
             import requests
@@ -253,14 +318,16 @@ def parse_promise_to_pay(customer_reply: str) -> Dict[str, Any]:
                 "response_format": {"type": "json_object"},
                 "temperature": 0.1
             }
-            resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=10)
+            resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=6)
             if resp.status_code == 200:
                 parsed = resp.json()["choices"][0]["message"]["content"]
                 data = json.loads(parsed)
                 status = data.get("status", "UNCLEAR").upper()
                 if status not in ["PROMISED", "DECLINED", "UNCLEAR"]:
                     status = "UNCLEAR"
-                return {"status": status, "promised_date": data.get("promised_date")}
+                res = {"status": status, "promised_date": data.get("promised_date")}
+                _PROMISE_CACHE[cache_key] = res
+                return res
 
     except Exception:
         return _fallback_parse_promise(customer_reply)
