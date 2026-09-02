@@ -2,7 +2,7 @@
 
 Generates realistic synthetic batches of UPI Autopay failure transactions
 mirroring real-world distribution patterns across failure codes, subscription
-amounts, customer demographics, and opt-out statuses.
+amounts, customer demographics, risk scores, and opt-out statuses.
 """
 
 import argparse
@@ -26,19 +26,52 @@ FAILURE_WEIGHTS = [0.45, 0.25, 0.15, 0.15]
 SUBSCRIPTION_AMOUNTS = [199, 299, 499, 699, 999, 1499, 1999]
 AMOUNT_WEIGHTS = [0.25, 0.25, 0.20, 0.10, 0.10, 0.05, 0.05]
 
+# Merchant / service categories
+MERCHANT_CATEGORIES = [
+    "OTT Streaming", "EdTech", "Gaming", "SaaS Tools", "News & Media",
+    "Fitness & Wellness", "Music Streaming", "Cloud Storage", "Finance Apps", "Food & Delivery"
+]
+MERCHANT_WEIGHTS = [0.25, 0.15, 0.10, 0.10, 0.08, 0.08, 0.07, 0.07, 0.05, 0.05]
+
+# Customer segments
+CUSTOMER_SEGMENTS = ["High Value", "Mid Tier", "Budget", "At Risk", "Churning"]
+CUSTOMER_SEGMENT_WEIGHTS = [0.15, 0.35, 0.30, 0.12, 0.08]
+
 # Realistic Indian customer first and last names for diverse synthetic generation
 FIRST_NAMES = [
     "Aarav", "Aditi", "Amit", "Ananya", "Deepak", "Divya", "Gaurav", "Isha",
     "Karan", "Kavita", "Manish", "Neha", "Nikhil", "Pooja", "Pranav", "Priya",
     "Rahul", "Rakesh", "Riya", "Rohan", "Rohit", "Sakshi", "Sanjay", "Shreya",
-    "Siddharth", "Sneha", "Sunil", "Tanvi", "Varun", "Vikram"
+    "Siddharth", "Sneha", "Sunil", "Tanvi", "Varun", "Vikram", "Anjali", "Arjun",
+    "Bhavna", "Chirag", "Diya", "Ekta", "Farhan", "Geeta", "Harsh", "Ishaan",
+    "Jayesh", "Kritika", "Lakshmi", "Mohit", "Nisha", "Om", "Pallavi", "Qasim",
+    "Ritika", "Shivam"
 ]
 
 LAST_NAMES = [
     "Sharma", "Verma", "Patel", "Mehta", "Gupta", "Singh", "Kumar", "Iyer",
     "Reddy", "Nair", "Deshmukh", "Chopra", "Joshi", "Bhat", "Kulkarni",
-    "Malhotra", "Saxena", "Choudhury", "Das", "Rao"
+    "Malhotra", "Saxena", "Choudhury", "Das", "Rao", "Pillai", "Shetty",
+    "Mukherjee", "Agarwal", "Banerjee", "Naik", "Parekh", "Trivedi", "Doshi", "Bajaj"
 ]
+
+
+def _compute_risk_score(failure_code: str, amount: int, prev_failures: int, segment: str) -> float:
+    """Compute a risk score 0.0-1.0 for churn/recovery probability."""
+    base = {
+        "INSUFFICIENT_BALANCE": 0.40,
+        "TECH_TIMEOUT": 0.15,
+        "MANDATE_EXPIRED": 0.55,
+        "HARD_DECLINE_OR_CANCELLED": 0.90,
+    }.get(failure_code, 0.50)
+
+    # High value customers are slightly lower risk
+    segment_adj = {"High Value": -0.10, "Mid Tier": 0.0, "Budget": 0.05, "At Risk": 0.15, "Churning": 0.25}.get(segment, 0.0)
+    # More previous failures = higher risk
+    failure_adj = min(prev_failures * 0.07, 0.25)
+
+    score = base + segment_adj + failure_adj
+    return round(min(max(score, 0.0), 1.0), 2)
 
 
 def generate_synthetic_transactions(
@@ -69,6 +102,11 @@ def generate_synthetic_transactions(
 
         amount = random.choices(SUBSCRIPTION_AMOUNTS, weights=AMOUNT_WEIGHTS, k=1)[0]
         failure_code = random.choices(FAILURE_CODES, weights=FAILURE_WEIGHTS, k=1)[0]
+        merchant_category = random.choices(MERCHANT_CATEGORIES, weights=MERCHANT_WEIGHTS, k=1)[0]
+        customer_segment = random.choices(CUSTOMER_SEGMENTS, weights=CUSTOMER_SEGMENT_WEIGHTS, k=1)[0]
+        previous_failure_count = random.choices([0, 1, 2, 3], weights=[0.50, 0.25, 0.15, 0.10], k=1)[0]
+
+        risk_score = _compute_risk_score(failure_code, amount, previous_failure_count, customer_segment)
 
         # Due date spread across the last 30 days
         days_ago = random.randint(1, 30)
@@ -96,6 +134,10 @@ def generate_synthetic_transactions(
             "attempt_number": 1,
             "opted_out": opted_out,
             "created_at": created_at_str,
+            "merchant_category": merchant_category,
+            "customer_segment": customer_segment,
+            "previous_failure_count": previous_failure_count,
+            "risk_score": risk_score,
         }
         transactions.append(record)
 
@@ -118,19 +160,25 @@ def print_distribution_summary(transactions: List[Dict[str, Any]]) -> None:
     counts = Counter(t["failure_code"] for t in transactions)
     opt_outs = sum(1 for t in transactions if t["opted_out"])
     total_amount = sum(t["amount_inr"] for t in transactions)
+    segments = Counter(t.get("customer_segment") for t in transactions)
 
-    print("=" * 60)
+    print("=" * 65)
     print(f"  SYNTHETIC DATA GENERATION SUMMARY (Total: {total} records)")
-    print("=" * 60)
+    print("=" * 65)
     print(f"Total Portfolio Value At Risk: INR {total_amount:,.2f}")
     print(f"Customer Opt-Outs: {opt_outs} ({(opt_outs/total)*100:.1f}%)")
-    print("-" * 60)
+    print("-" * 65)
     print("Failure Code Breakdown:")
     for code in FAILURE_CODES:
         c = counts.get(code, 0)
         pct = (c / total) * 100 if total > 0 else 0
-        print(f"  - {code:<28} : {c:>4} records ({pct:>5.1f}%)")
-    print("=" * 60)
+        print(f"  - {code:<30} : {c:>4} records ({pct:>5.1f}%)")
+    print("-" * 65)
+    print("Customer Segment Breakdown:")
+    for seg, cnt in segments.most_common():
+        pct = (cnt / total) * 100 if total > 0 else 0
+        print(f"  - {seg:<20} : {cnt:>4} ({pct:>5.1f}%)")
+    print("=" * 65)
 
 
 def main():

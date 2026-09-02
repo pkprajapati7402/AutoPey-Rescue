@@ -1,0 +1,45 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\PRINCE\Documents\GitHub\AutoPey-Rescue\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\PRINCE\Documents\GitHub\AutoPey-Rescue
+plugins: anyio-4.14.2
+collecting ... collected 36 items
+
+tests/test_audit.py::test_log_and_load_audit_trail PASSED                [  2%]
+tests/test_data_generator.py::test_generate_synthetic_transactions_count PASSED [  5%]
+tests/test_data_generator.py::test_generate_synthetic_transactions_fields PASSED [  8%]
+tests/test_data_generator.py::test_save_transactions PASSED              [ 11%]
+tests/test_diagnosis.py::test_diagnose_all_valid_categories PASSED       [ 13%]
+tests/test_diagnosis.py::test_diagnose_unrecognized_failure_code PASSED  [ 16%]
+tests/test_diagnosis.py::test_diagnose_missing_failure_code PASSED       [ 19%]
+tests/test_diagnosis.py::test_diagnose_invalid_input_type PASSED         [ 22%]
+tests/test_escalation.py::test_escalation_declined_stop PASSED           [ 25%]
+tests/test_escalation.py::test_escalation_promised_with_date_not_breached PASSED [ 27%]
+tests/test_escalation.py::test_escalation_promised_broken PASSED         [ 30%]
+tests/test_escalation.py::test_escalation_promised_no_date PASSED        [ 33%]
+tests/test_escalation.py::test_escalation_unclear PASSED                 [ 36%]
+tests/test_escalation.py::test_escalation_summary PASSED                 [ 38%]
+tests/test_escalation.py::test_escalation_log_and_load PASSED            [ 41%]
+tests/test_guardrails.py::test_guardrail_rule1_opted_out PASSED          [ 44%]
+tests/test_guardrails.py::test_guardrail_rule2_terminal_action PASSED    [ 47%]
+tests/test_guardrails.py::test_guardrail_rule3_max_retries_reached PASSED [ 50%]
+tests/test_guardrails.py::test_guardrail_rule4_cooldown_active PASSED    [ 52%]
+tests/test_guardrails.py::test_guardrail_rule5_allowed_within_limits PASSED [ 55%]
+tests/test_guardrails.py::test_check_global_cap PASSED                   [ 58%]
+tests/test_metrics.py::test_compute_metrics_hand_built PASSED            [ 61%]
+tests/test_metrics.py::test_compute_metrics_empty_list PASSED            [ 63%]
+tests/test_outreach.py::test_draft_nudge_fallback_content_and_length PASSED [ 66%]
+tests/test_outreach.py::test_draft_nudge_graceful_with_missing_fields PASSED [ 69%]
+tests/test_outreach.py::test_parse_promise_to_pay_fallback_promised PASSED [ 72%]
+tests/test_outreach.py::test_parse_promise_to_pay_fallback_declined PASSED [ 75%]
+tests/test_outreach.py::test_parse_promise_to_pay_fallback_unclear PASSED [ 77%]
+tests/test_outreach.py::test_parse_promise_to_pay_empty_input PASSED     [ 80%]
+tests/test_pipeline.py::test_baseline_pipeline_execution PASSED          [ 83%]
+tests/test_pipeline.py::test_system_pipeline_execution PASSED            [ 86%]
+tests/test_policy.py::test_decide_action_technical PASSED                [ 88%]
+tests/test_policy.py::test_decide_action_balance PASSED                  [ 91%]
+tests/test_policy.py::test_decide_action_expired PASSED                  [ 94%]
+tests/test_policy.py::test_decide_action_terminal PASSED                 [ 97%]
+tests/test_policy.py::test_decide_action_invalid_root_cause PASSED       [100%]
+
+============================= 36 passed in 30.76s =============================

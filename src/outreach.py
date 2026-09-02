@@ -2,7 +2,7 @@
 
 This module is the ONLY component in AutoPey-Rescue that leverages LLMs.
 It supports:
-1. Google Gemini API (Free tier / production via GEMINI_API_KEY / GOOGLE_API_KEY)
+1. Google Gemini API (via google-genai SDK — GEMINI_API_KEY / GOOGLE_API_KEY)
 2. Optional OpenAI API (OPENAI_API_KEY)
 3. Optional Anthropic API (ANTHROPIC_API_KEY)
 4. Offline / No-API-Key fallback mode for resilient automated tests and offline simulation.
@@ -44,14 +44,35 @@ def _fallback_draft_nudge(transaction: Dict[str, Any]) -> str:
     customer_name = transaction.get("customer_name", "Customer")
     first_name = customer_name.split()[0] if customer_name else "Customer"
     amount = transaction.get("amount_inr", 499)
-    due_date = transaction.get("due_date", "recent date")
+    due_date = transaction.get("due_date", "recently")
+    failure_code = transaction.get("failure_code", "UNKNOWN")
 
-    message = (
-        f"Hi {first_name}! Apka Rs.{amount} ka subscription payment {due_date} ko "
-        f"complete nahi ho paya. Please UPI app par check kar lijiye taki plan chalta rahe. "
-        f"Koi query ho toh bataiye!"
-    )
-    return message[:299]
+    # Contextual messages per failure type for richer fallback variety
+    if failure_code == "INSUFFICIENT_BALANCE":
+        templates = [
+            f"Hi {first_name}! Rs.{amount} ka payment {due_date} ko process nahi ho paya — balance thoda kam tha. Salary aane ke baad ek baar check kar lijiye!",
+            f"Namaste {first_name}! Aapka Rs.{amount} subscription {due_date} ko fail hua. Kabhi bhi convenient ho toh UPI se complete kar sakte ho — hum wait karenge!",
+            f"Hey {first_name}! Rs.{amount} payment {due_date} ko fail hua. Koi bhi waqt complete kar sakte ho — aapka plan safe hai abhi. 🙏",
+        ]
+    elif failure_code == "MANDATE_EXPIRED":
+        templates = [
+            f"Hi {first_name}! Aapka Rs.{amount} ka autopay mandate expire ho gaya ({due_date}). Ek baar mandate renew kar lo toh subscription automatic ho jayega!",
+            f"Hey {first_name}! Rs.{amount} ka mandate {due_date} ko expire hua. Please mandate reauthorize kar lo — link bhejte hain. Easy process hai!",
+        ]
+    elif failure_code == "TECH_TIMEOUT":
+        templates = [
+            f"Hi {first_name}! Rs.{amount} payment {due_date} ko bank timeout ki wajah se fail hua — aapki galti nahi! Automatically retry ho jayega, koi action needed nahi.",
+            f"Hey {first_name}! Technical issue se Rs.{amount} payment {due_date} ko ruk gayi. Hum retry kar rahe hain — koi tension nahi!",
+        ]
+    else:
+        templates = [
+            f"Hi {first_name}! Apka Rs.{amount} ka subscription payment {due_date} ko complete nahi ho paya. Please UPI app par check kar lijiye taki plan chalta rahe. Koi query ho toh bataiye!",
+        ]
+
+    import random
+    rng = random.Random(hash(transaction.get("transaction_id", "default")))
+    msg = rng.choice(templates)
+    return msg[:299]
 
 
 def _fallback_parse_promise(reply: str) -> Dict[str, Any]:
@@ -62,17 +83,18 @@ def _fallback_parse_promise(reply: str) -> Dict[str, Any]:
     lower = reply.lower().strip()
 
     # Decline indicators
-    decline_words = ["cancel", "cancelled", "band karo", "nahi chahiye", "stop", "no", "mat karo", "not interested"]
+    decline_words = ["cancel", "cancelled", "band karo", "nahi chahiye", "stop", "no thanks",
+                     "mat karo", "not interested", "refund", "fraud", "block karo", "deactivate"]
+    promise_words = [
+        "kal", "tomorrow", "shaam", "evening", "aaj", "today", "kar dunga", "karta hu",
+        "pay karunga", "salary", "pay later", "will pay", "5th", "1st", "10th", "15th",
+        "haan", "yes", "done", "zaroor", "pakka", "abhi karta", "ho jayega", "karunga"
+    ]
+
     if any(w in lower for w in decline_words) and not any(p in lower for p in ["kal", "kar dunga", "pay karunga"]):
         return {"status": "DECLINED", "promised_date": None}
 
-    # Promise / commitment indicators
-    promise_words = [
-        "kal", "tomorrow", "shaam", "evening", "aaj", "today", "kar dunga", "karta hu",
-        "pay karunga", "salary", "pay later", "will pay", "5th", "1st", "10th", "haan", "yes", "done"
-    ]
     if any(w in lower for w in promise_words):
-        # Check for explicit date mentions like 2026-09-05 or 5th or tomorrow
         date_match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", reply)
         promised_date = date_match.group(1) if date_match else None
         return {"status": "PROMISED", "promised_date": promised_date}
@@ -87,7 +109,7 @@ def draft_nudge(transaction: Dict[str, Any]) -> str:
     Constraints: Must mention first name, amount_inr, and due_date. Length < 300 characters.
 
     Args:
-        transaction: Dict containing customer_name, amount_inr, due_date.
+        transaction: Dict containing customer_name, amount_inr, due_date, failure_code.
 
     Returns:
         Hinglish message text under 300 characters.
@@ -101,26 +123,39 @@ def draft_nudge(transaction: Dict[str, Any]) -> str:
     first_name = customer_name.split()[0] if customer_name else "Customer"
     amount = transaction.get("amount_inr", 499)
     due_date = transaction.get("due_date", "recently")
+    failure_code = transaction.get("failure_code", "UNKNOWN")
+
+    # Contextualize prompt based on failure type
+    context_map = {
+        "INSUFFICIENT_BALANCE": "The customer's account had insufficient balance. Align message with salary cycle timing.",
+        "MANDATE_EXPIRED": "The customer's autopay mandate has expired. Gently request mandate re-authorization.",
+        "TECH_TIMEOUT": "This was a technical bank timeout — not the customer's fault. Reassure them no action is needed, retry is automatic.",
+        "HARD_DECLINE_OR_CANCELLED": "The customer has cancelled. Do NOT contact — this case should not reach outreach.",
+    }
+    context = context_map.get(failure_code, "General payment failure.")
 
     prompt = (
         f"You are an empathetic customer success assistant for an Indian subscription service. "
         f"Draft a short, polite WhatsApp payment reminder in natural Hinglish (Hindi-English mix). "
+        f"Context: {context} "
         f"Details: Customer First Name: {first_name}, Amount: INR {amount}, Due Date: {due_date}. "
         f"Rules: "
-        f"1. Low pressure, empathetic, courteous. "
-        f"2. MUST reference {first_name}, INR {amount} (or Rs.{amount}), and date {due_date}. "
-        f"3. Do NOT threaten cancellation or penalty. "
+        f"1. Low pressure, empathetic, courteous tone. "
+        f"2. MUST naturally reference {first_name}, Rs.{amount}, and date {due_date}. "
+        f"3. Do NOT threaten cancellation, penalties, or legal action. "
         f"4. Length MUST be strictly under 280 characters. "
-        f"5. Output ONLY the message text without quotes or preamble."
+        f"5. Output ONLY the message text without quotes, preamble, or markdown."
     )
 
     try:
         if provider == "gemini":
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(prompt)
-            text = response.text.strip()
+            from google import genai as google_genai
+            client = google_genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
+            text = response.text.strip() if response.text else ""
             return text[:299] if text else _fallback_draft_nudge(transaction)
 
         elif provider == "openai":
@@ -181,19 +216,25 @@ def parse_promise_to_pay(customer_reply: str) -> Dict[str, Any]:
         return _fallback_parse_promise(customer_reply)
 
     system_instruction = (
+        "You are a payment intent classifier for an Indian fintech system. "
         "Classify the customer's payment response into exactly one of: 'PROMISED', 'DECLINED', or 'UNCLEAR'. "
-        "If the customer promised to pay on a specific date, extract 'promised_date' (ISO YYYY-MM-DD if available, or string, else null). "
-        "Return ONLY a JSON object with keys 'status' and 'promised_date'. No explanation or markdown."
+        "PROMISED: customer agrees to pay (now, later, or on a specific date). "
+        "DECLINED: customer explicitly refuses, cancels subscription, or says not interested. "
+        "UNCLEAR: ambiguous, unrelated, or insufficient information. "
+        "If PROMISED and a specific date is mentioned, extract 'promised_date' (ISO YYYY-MM-DD if available, or natural language like 'tomorrow', else null). "
+        "Return ONLY a valid JSON object with keys 'status' and 'promised_date'. No explanation or markdown."
     )
     prompt = f"{system_instruction}\nCustomer Reply: \"{customer_reply}\""
 
     try:
         if provider == "gemini":
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(prompt)
-            raw_text = response.text.strip()
+            from google import genai as google_genai
+            client = google_genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
+            raw_text = response.text.strip() if response.text else ""
             # Clean markdown codeblocks if present
             cleaned = re.sub(r"^```json\s*", "", raw_text, flags=re.MULTILINE)
             cleaned = re.sub(r"^```\s*", "", cleaned, flags=re.MULTILINE).strip()

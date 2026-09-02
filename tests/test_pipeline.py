@@ -36,11 +36,19 @@ def test_system_pipeline_execution():
     sample_txns = generate_synthetic_transactions(count=20, seed=42)
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
         tmp_log = tmp.name
+    with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp2:
+        tmp_esc_log = tmp2.name
 
     try:
-        outcomes = run_system_pipeline(sample_txns, seed=42, log_path=tmp_log)
+        outcomes = run_system_pipeline(
+            sample_txns,
+            seed=42,
+            log_path=tmp_log,
+            escalation_log_path=tmp_esc_log,
+        )
         assert len(outcomes) == 20
         assert os.path.exists(tmp_log)
+        assert os.path.exists(tmp_esc_log)
 
         metrics = compute_metrics(outcomes)
         assert metrics["total_transactions"] == 20
@@ -50,6 +58,12 @@ def test_system_pipeline_execution():
             if o["chosen_action"] == "STOP_AND_FLAG":
                 assert o["contacts_sent"] == 0
                 assert o["attempts_made"] == 0
+
+        # Verify new fields are present in outcomes
+        for o in outcomes:
+            assert "promise_to_pay_status" in o
+            assert "escalation_path" in o
     finally:
-        if os.path.exists(tmp_log):
-            os.remove(tmp_log)
+        for path in [tmp_log, tmp_esc_log]:
+            if os.path.exists(path):
+                os.remove(path)

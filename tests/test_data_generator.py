@@ -34,10 +34,16 @@ def test_generate_synthetic_transactions_fields():
         "attempt_number",
         "opted_out",
         "created_at",
+        "merchant_category",
+        "customer_segment",
+        "previous_failure_count",
+        "risk_score",
     }
 
+    valid_segments = {"High Value", "Mid Tier", "Budget", "At Risk", "Churning"}
+
     for record in records:
-        assert required_keys.issubset(record.keys())
+        assert required_keys.issubset(record.keys()), f"Missing keys: {required_keys - set(record.keys())}"
         assert record["failure_code"] in FAILURE_CODES
         assert isinstance(record["amount_inr"], int)
         assert record["amount_inr"] > 0
@@ -45,6 +51,10 @@ def test_generate_synthetic_transactions_fields():
         assert record["attempt_number"] == 1
         assert record["transaction_id"].startswith("TXN")
         assert len(record["customer_name"].split()) >= 2
+        assert record["customer_segment"] in valid_segments
+        assert isinstance(record["risk_score"], float)
+        assert 0.0 <= record["risk_score"] <= 1.0
+        assert isinstance(record["previous_failure_count"], int)
 
 
 def test_save_transactions():

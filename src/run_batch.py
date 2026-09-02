@@ -4,10 +4,12 @@ Orchestrates the complete recovery loop across all synthetic transactions:
 1. Deterministic Root-Cause Diagnosis
 2. Intervention Policy Selection
 3. Safety Guardrails & Stopping Rules Enforcement
-4. LLM Outreach Generation & Intent Parsing (Google Gemini / Fallback)
-5. Structured Append-Only Audit Trail Logging
-6. Comparative Simulation Benchmarking Against Naive Blind Retry Baseline
-7. Metric Calculations & Export to data/results.json
+4. LLM Outreach Generation (Google Gemini / Fallback)
+5. Customer Promise-to-Pay Intent Simulation & Escalation Routing
+6. Structured Append-Only Audit Trail Logging
+7. Escalation Queue Logging for HOLD/REVIEW/STOP Cases
+8. Comparative Simulation Benchmarking Against Naive Blind Retry Baseline
+9. Metric Calculations & Export to data/results.json
 """
 
 import argparse
@@ -24,8 +26,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from src.diagnosis import diagnose
 from src.policy import decide_action
 from src.guardrails import is_action_allowed, check_global_cap
-from src.outreach import draft_nudge
+from src.outreach import draft_nudge, parse_promise_to_pay
 from src.audit import log_decision, clear_audit_trail
+from src.escalation import classify_escalation, log_escalation, clear_escalation_queue
 from src.baseline import run_baseline
 from src.metrics import compute_metrics
 from src.data_generator import generate_synthetic_transactions, save_transactions
@@ -39,11 +42,50 @@ SYSTEM_RECOVERY_PROBABILITIES = {
     "terminal": 0.00,   # Terminal decline - stop and flag to avoid spam
 }
 
+# Simulated customer reply distribution for nudged transactions (balance + expired)
+# ~20% of nudged customers reply; of those: 55% promise, 25% decline, 20% unclear
+PROMISE_REPLY_RATE = 0.20
+PROMISE_STATUS_DIST = {
+    "PROMISED": 0.55,
+    "DECLINED": 0.25,
+    "UNCLEAR": 0.20,
+}
+
+SIMULATED_REPLIES = {
+    "PROMISED": [
+        "Haan zaroor, kal kar dunga payment",
+        "Salary aa rahi hai 5th ko, tab automatically ho jayega",
+        "Aaj shaam 7 baje UPI se kar deta hun",
+        "Yes will pay by end of week",
+        "Ok ok, karunga 2-3 din mein",
+    ],
+    "DECLINED": [
+        "Band karo ye subscription, mujhe nahi chahiye",
+        "I have already cancelled this. Please stop",
+        "Nahi chahiye, refund do",
+        "Fraud lag raha hai, block karo",
+        "No longer interested. Cancel everything",
+    ],
+    "UNCLEAR": [
+        "Who is this?",
+        "Samajh nahi aaya",
+        "Wrong number hai",
+        "Baad mein baat karte hain",
+        "?",
+    ],
+}
+
+
+def _simulate_customer_reply(rng: random.Random, promise_status: str) -> str:
+    """Pick a random simulated reply matching the desired intent status."""
+    return rng.choice(SIMULATED_REPLIES[promise_status])
+
 
 def run_system_pipeline(
     transactions: List[Dict[str, Any]],
     seed: int = 42,
-    log_path: str = "logs/audit_trail.jsonl"
+    log_path: str = "logs/audit_trail.jsonl",
+    escalation_log_path: str = "logs/escalation_queue.jsonl",
 ) -> List[Dict[str, Any]]:
     """Execute the full AutoPey-Rescue intelligence pipeline on transactions.
 
@@ -51,15 +93,18 @@ def run_system_pipeline(
         transactions: List of transaction dictionaries.
         seed: Random seed for deterministic simulation.
         log_path: Filepath for audit trail.
+        escalation_log_path: Filepath for escalation queue.
 
     Returns:
         List of systemic outcome dictionaries per transaction.
     """
     rng = random.Random(seed)
     clear_audit_trail(log_path)
+    clear_escalation_queue(escalation_log_path)
 
     outcomes: List[Dict[str, Any]] = []
     nudges_sent_count = 0
+    escalation_counts = {"DECLINED_STOP": 0, "PROMISE_BROKEN": 0, "RETRY_SCHEDULED": 0, "HUMAN_REVIEW": 0}
 
     for txn in transactions:
         txn_id = txn["transaction_id"]
@@ -81,6 +126,8 @@ def run_system_pipeline(
         days_to_recovery = None
         last_outreach_msg = None
         final_guardrail_result = {"allowed": False, "reason": "not evaluated"}
+        promise_to_pay_status = None
+        escalation_path = None
 
         max_allowed_attempts = policy_decision["max_retries"]
 
@@ -122,11 +169,59 @@ def run_system_pipeline(
                 # Outreach message drafting (for balance nudges and expired reauth links)
                 msg = None
                 if policy_decision["action"] in ["HOLD_AND_NUDGE", "REAUTH_LINK"]:
-                    if check_global_cap(nudges_sent_count, cap=150):
+                    if check_global_cap(nudges_sent_count, cap=200):
                         msg = draft_nudge(txn)
                         nudges_sent_count += 1
                         contacts_sent += 1
                         last_outreach_msg = msg
+
+                        # -------------------------------------------------------
+                        # Promise-to-Pay Simulation Loop
+                        # On first nudge, simulate whether customer replies
+                        # -------------------------------------------------------
+                        if attempt_idx == 1 and rng.random() < PROMISE_REPLY_RATE:
+                            # Choose a reply status weighted by distribution
+                            statuses = list(PROMISE_STATUS_DIST.keys())
+                            weights = list(PROMISE_STATUS_DIST.values())
+                            chosen_status = rng.choices(statuses, weights=weights, k=1)[0]
+                            simulated_reply = _simulate_customer_reply(rng, chosen_status)
+
+                            # Parse intent (uses LLM if available, fallback otherwise)
+                            promise_result = parse_promise_to_pay(simulated_reply)
+                            promise_to_pay_status = promise_result.get("status")
+
+                            # Classify escalation path
+                            days_since = rng.uniform(0.5, 6.0)  # Simulated days since outreach
+                            escalation = classify_escalation(txn, promise_result, days_since_contact=days_since)
+                            escalation_path = escalation.get("escalation_path")
+                            escalation_counts[escalation_path] = escalation_counts.get(escalation_path, 0) + 1
+
+                            # Log to escalation queue
+                            log_escalation(txn, escalation, promise_result, log_path=escalation_log_path)
+
+                            # If customer DECLINED → guardrail should stop further contacts
+                            if promise_to_pay_status == "DECLINED":
+                                # Record this contact then break — no further retries
+                                contact_history.append({
+                                    "attempt": attempt_idx,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "action": policy_decision["action"]
+                                })
+                                log_decision(
+                                    transaction=txn,
+                                    root_cause=root_cause,
+                                    policy_decision=policy_decision,
+                                    guardrail_result=guardrail_res,
+                                    outreach_message=msg,
+                                    outcome={
+                                        "recovered": False, "attempts": attempts_made,
+                                        "contacts": contacts_sent,
+                                        "promise_to_pay": promise_to_pay_status,
+                                        "escalation_path": escalation_path,
+                                    },
+                                    log_path=log_path,
+                                )
+                                break
 
                 # Record contact event in transaction history
                 contact_history.append({
@@ -137,15 +232,20 @@ def run_system_pipeline(
 
                 # Check recovery probability
                 prob = SYSTEM_RECOVERY_PROBABILITIES.get(root_cause, 0.20)
+
+                # Boost recovery probability if customer made a promise
+                if promise_to_pay_status == "PROMISED":
+                    prob = min(prob * 1.20, 0.95)  # 20% uplift for promised customers
+
                 if rng.random() < prob:
                     recovered = True
                     # Estimate realistic days to recovery
                     if root_cause == "technical":
-                        days_to_recovery = round(0.25 * attempt_idx, 2)  # Same-day recovery (~6-12 hrs)
+                        days_to_recovery = round(0.25 * attempt_idx, 2)  # Same-day (~6-12 hrs)
                     elif root_cause == "balance":
-                        days_to_recovery = round(2.0 * attempt_idx, 2)   # 2-4 days post salary alignment
+                        days_to_recovery = round(2.0 * attempt_idx, 2)   # 2-4 days post salary
                     elif root_cause == "expired":
-                        days_to_recovery = round(1.5 * attempt_idx, 2)   # Re-authorization link turnaround
+                        days_to_recovery = round(1.5 * attempt_idx, 2)   # Re-authorization turnaround
                     else:
                         days_to_recovery = float(attempt_idx)
 
@@ -160,7 +260,9 @@ def run_system_pipeline(
                             "attempts": attempts_made,
                             "contacts": contacts_sent,
                             "recovered_amount": amount,
-                            "days_to_recovery": days_to_recovery
+                            "days_to_recovery": days_to_recovery,
+                            "promise_to_pay": promise_to_pay_status,
+                            "escalation_path": escalation_path,
                         },
                         log_path=log_path,
                     )
@@ -173,7 +275,13 @@ def run_system_pipeline(
                         policy_decision=policy_decision,
                         guardrail_result=guardrail_res,
                         outreach_message=msg,
-                        outcome={"recovered": False, "attempts": attempts_made, "contacts": contacts_sent},
+                        outcome={
+                            "recovered": False,
+                            "attempts": attempts_made,
+                            "contacts": contacts_sent,
+                            "promise_to_pay": promise_to_pay_status,
+                            "escalation_path": escalation_path,
+                        },
                         log_path=log_path,
                     )
 
@@ -191,7 +299,18 @@ def run_system_pipeline(
             "policy": "AUTOPAY_RESCUE_INTELLIGENT",
             "last_outreach_message": last_outreach_msg,
             "guardrail_status": final_guardrail_result.get("reason"),
+            "promise_to_pay_status": promise_to_pay_status,
+            "escalation_path": escalation_path,
+            "merchant_category": txn.get("merchant_category"),
+            "customer_segment": txn.get("customer_segment"),
+            "risk_score": txn.get("risk_score"),
         })
+
+    # Print escalation summary to stdout
+    print(f"\nEscalation Routing Summary (from {nudges_sent_count} nudged transactions):")
+    for path, count in escalation_counts.items():
+        if count > 0:
+            print(f"  {path}: {count} cases")
 
     return outcomes
 
@@ -233,19 +352,44 @@ def print_comparison_table(system_metrics: Dict[str, Any], baseline_metrics: Dic
     print("=" * 78 + "\n")
 
 
+def compute_category_breakdown(outcomes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Compute recovery metrics broken down by failure code category."""
+    from collections import defaultdict
+    by_code: Dict[str, List] = defaultdict(list)
+    for o in outcomes:
+        by_code[o.get("failure_code", "UNKNOWN")].append(o)
+
+    breakdown = {}
+    for code, items in by_code.items():
+        total = len(items)
+        recovered = sum(1 for i in items if i.get("recovered"))
+        recovered_inr = sum(i.get("recovered_amount_inr", 0) for i in items)
+        total_contacts = sum(i.get("contacts_sent", 0) for i in items)
+        breakdown[code] = {
+            "total": total,
+            "recovered": recovered,
+            "recovery_rate_pct": round((recovered / total) * 100, 1) if total > 0 else 0.0,
+            "total_recovered_inr": recovered_inr,
+            "total_contacts": total_contacts,
+            "recovered_per_contact": round(recovered_inr / total_contacts, 2) if total_contacts > 0 else 0.0,
+        }
+    return breakdown
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run AutoPey-Rescue batch benchmark.")
     parser.add_argument("--data", type=str, default="data/synthetic_transactions.json", help="Input transaction data path")
     parser.add_argument("--results", type=str, default="data/results.json", help="Output results JSON path")
     parser.add_argument("--audit-log", type=str, default="logs/audit_trail.jsonl", help="Audit log JSONL path")
+    parser.add_argument("--escalation-log", type=str, default="logs/escalation_queue.jsonl", help="Escalation queue JSONL path")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for simulation reproducibility")
-    parser.add_argument("--generate-if-missing", action="store_true", default=True, help="Generate dataset if not found")
+    parser.add_argument("--count", type=int, default=200, help="Number of records to generate if data missing")
     args = parser.parse_args()
 
     # Load or generate transactions
     if not os.path.exists(args.data):
-        print(f"Data file '{args.data}' not found. Generating 200 synthetic records...")
-        transactions = generate_synthetic_transactions(count=200, seed=args.seed)
+        print(f"Data file '{args.data}' not found. Generating {args.count} synthetic records...")
+        transactions = generate_synthetic_transactions(count=args.count, seed=args.seed)
         save_transactions(transactions, output_path=args.data)
     else:
         with open(args.data, "r", encoding="utf-8") as f:
@@ -253,12 +397,19 @@ def main():
 
     print(f"Loaded {len(transactions)} transactions from {args.data}.")
     print("Executing AutoPey-Rescue intelligent pipeline...")
-    system_outcomes = run_system_pipeline(transactions, seed=args.seed, log_path=args.audit_log)
+    system_outcomes = run_system_pipeline(
+        transactions,
+        seed=args.seed,
+        log_path=args.audit_log,
+        escalation_log_path=args.escalation_log,
+    )
     system_metrics = compute_metrics(system_outcomes)
+    system_category_breakdown = compute_category_breakdown(system_outcomes)
 
     print("Executing Naive Blind-Retry baseline simulation...")
     baseline_outcomes = run_baseline(transactions, seed=args.seed)
     baseline_metrics = compute_metrics(baseline_outcomes)
+    baseline_category_breakdown = compute_category_breakdown(baseline_outcomes)
 
     # Save results
     results_payload = {
@@ -270,10 +421,12 @@ def main():
         "system": {
             "metrics": system_metrics,
             "outcomes": system_outcomes,
+            "category_breakdown": system_category_breakdown,
         },
         "baseline": {
             "metrics": baseline_metrics,
             "outcomes": baseline_outcomes,
+            "category_breakdown": baseline_category_breakdown,
         },
     }
 

@@ -1,0 +1,51 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\PRINCE\Documents\GitHub\AutoPey-Rescue\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\PRINCE\Documents\GitHub\AutoPey-Rescue
+plugins: anyio-4.14.2
+collecting ... collected 29 items
+
+tests/test_audit.py::test_log_and_load_audit_trail PASSED                [  3%]
+tests/test_data_generator.py::test_generate_synthetic_transactions_count PASSED [  6%]
+tests/test_data_generator.py::test_generate_synthetic_transactions_fields PASSED [ 10%]
+tests/test_data_generator.py::test_save_transactions PASSED              [ 13%]
+tests/test_diagnosis.py::test_diagnose_all_valid_categories PASSED       [ 17%]
+tests/test_diagnosis.py::test_diagnose_unrecognized_failure_code PASSED  [ 20%]
+tests/test_diagnosis.py::test_diagnose_missing_failure_code PASSED       [ 24%]
+tests/test_diagnosis.py::test_diagnose_invalid_input_type PASSED         [ 27%]
+tests/test_guardrails.py::test_guardrail_rule1_opted_out PASSED          [ 31%]
+tests/test_guardrails.py::test_guardrail_rule2_terminal_action PASSED    [ 34%]
+tests/test_guardrails.py::test_guardrail_rule3_max_retries_reached PASSED [ 37%]
+tests/test_guardrails.py::test_guardrail_rule4_cooldown_active PASSED    [ 41%]
+tests/test_guardrails.py::test_guardrail_rule5_allowed_within_limits PASSED [ 44%]
+tests/test_guardrails.py::test_check_global_cap PASSED                   [ 48%]
+tests/test_metrics.py::test_compute_metrics_hand_built PASSED            [ 51%]
+tests/test_metrics.py::test_compute_metrics_empty_list PASSED            [ 55%]
+tests/test_outreach.py::test_draft_nudge_fallback_content_and_length PASSED [ 58%]
+tests/test_outreach.py::test_draft_nudge_graceful_with_missing_fields PASSED [ 62%]
+tests/test_outreach.py::test_parse_promise_to_pay_fallback_promised PASSED [ 65%]
+tests/test_outreach.py::test_parse_promise_to_pay_fallback_declined PASSED [ 68%]
+tests/test_outreach.py::test_parse_promise_to_pay_fallback_unclear PASSED [ 72%]
+tests/test_outreach.py::test_parse_promise_to_pay_empty_input PASSED     [ 75%]
+tests/test_pipeline.py::test_baseline_pipeline_execution PASSED          [ 79%]
+tests/test_pipeline.py::test_system_pipeline_execution PASSED            [ 82%]
+tests/test_policy.py::test_decide_action_technical PASSED                [ 86%]
+tests/test_policy.py::test_decide_action_balance PASSED                  [ 89%]
+tests/test_policy.py::test_decide_action_expired PASSED                  [ 93%]
+tests/test_policy.py::test_decide_action_terminal PASSED                 [ 96%]
+tests/test_policy.py::test_decide_action_invalid_root_cause PASSED       [100%]
+
+============================== warnings summary ===============================
+tests/test_outreach.py::test_draft_nudge_graceful_with_missing_fields
+  C:\Users\PRINCE\Documents\GitHub\AutoPey-Rescue\src\outreach.py:119: FutureWarning: 
+  
+  All support for the `google.generativeai` package has ended. It will no longer be receiving 
+  updates or bug fixes. Please switch to the `google.genai` package as soon as possible.
+  See README for more details:
+  
+  https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/README.md
+  
+    import google.generativeai as genai
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 29 passed, 1 warning in 26.37s ========================
