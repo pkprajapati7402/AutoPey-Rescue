@@ -1,0 +1,23 @@
+# Environments & Secrets
+.env
+.env.local
+*.env
+
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Data and logs (keep folder structure via .gitkeep)
+logs/*.jsonl
+logs/*.log
+data/*.json
+!data/.gitkeep
+!logs/.gitkeep
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
