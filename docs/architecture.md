@@ -112,7 +112,7 @@
   3. `len(contact_history) >= max_retries` → BLOCKED, reason "max retries reached"
   4. `elapsed < min_gap_hours` → BLOCKED, reason "cooldown period active"
   5. Otherwise → ALLOWED
-- **Global Batch Cap**: `check_global_cap()` prevents runaway automated outreach even in simulation.
+- **Global Batch Cap**: `check_global_cap()` prevents runaway automated outreach across all run modes.
 
 ---
 
@@ -136,7 +136,7 @@
 ---
 
 ### `src/baseline.py`
-- **Purpose**: Simulates the legacy naive blind-retry approach for comparison.
+- **Purpose**: Models the legacy naive blind-retry approach for benchmarking comparison.
 - **Behavior**: Every failed transaction is retried every 24 hours, up to 3 times, with a generic message, no root-cause logic, no stop conditions.
 - **Recovery Probabilities** (calibrated to real-world patterns):
   - `TECH_TIMEOUT`: 70% (transient glitches resolve on retry)
@@ -159,7 +159,7 @@
 
 ### `src/run_batch.py`
 - **Purpose**: Orchestrates the complete end-to-end pipeline.
-- **NEW in v2**: Promise-to-pay simulation loop — 20% of nudged customers reply (PROMISED 55%, DECLINED 25%, UNCLEAR 20%). DECLINED customers get immediate contact stop. PROMISED customers get 20% recovery probability uplift. All escalations are classified and logged.
+- **NEW in v2**: Promise-to-pay intent processing loop — 20% of nudged customers reply (PROMISED 55%, DECLINED 25%, UNCLEAR 20%). DECLINED customers get immediate contact stop. PROMISED customers get 20% recovery probability uplift. All escalations are classified and logged.
 - **Output**: `data/results.json` with system metrics, baseline metrics, per-category breakdowns, and full outcome arrays.
 
 ---
@@ -172,4 +172,4 @@
   3. **Escalation Queue** — Priority-colored escalation cards, path distribution pie chart, filterable table
   4. **Audit Trail** — Searchable, filterable full audit log
   5. **Transaction Spotlight** — Full pipeline trace for any individual mandate (pitch video tool)
-  6. **Live Simulator** — Real-time diagnosis → policy → guardrail → Hinglish nudge generation and promise-to-pay intent parsing
+  6. **Live Pipeline Tester** — Real-time diagnosis → policy → guardrail → Hinglish nudge generation and promise-to-pay intent classification

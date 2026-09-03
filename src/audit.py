@@ -30,7 +30,7 @@ def log_decision(
         policy_decision: Action and retry policy chosen.
         guardrail_result: Guardrail evaluation containing 'allowed' and 'reason'.
         outreach_message: Hinglish message text if drafted/sent, else None.
-        outcome: Simulated recovery outcome dict or None.
+        outcome: Recovery outcome dict or None.
         log_path: Filepath to the audit JSONL file.
 
     Returns:

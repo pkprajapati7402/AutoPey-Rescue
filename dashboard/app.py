@@ -259,7 +259,7 @@ with st.sidebar:
             "🚨 Escalation Queue",
             "🔍 Audit Trail",
             "🎯 Transaction Spotlight",
-            "🧪 Live Simulator",
+            "⚡ Live Pipeline Tester",
         ],
         index=0,
         label_visibility="collapsed"
@@ -880,16 +880,16 @@ elif navigation == "🎯 Transaction Spotlight":
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# TAB 6: LIVE SIMULATOR
+# TAB 6: LIVE PIPELINE TESTER
 # ═════════════════════════════════════════════════════════════════════════════
-elif navigation == "🧪 Live Simulator":
-    st.subheader("Live Recovery Simulator")
-    st.caption("Test the full pipeline in real time — diagnosis, policy, guardrails, Hinglish nudge, and intent parsing.")
+elif navigation == "⚡ Live Pipeline Tester":
+    st.subheader("Live Pipeline Tester")
+    st.caption("Run any mandate scenario through the full pipeline in real time — diagnosis, policy, guardrails, Hinglish nudge generation, and intent parsing.")
 
-    sim_tab1, sim_tab2 = st.tabs(["⚙️ Mandate Failure Simulator", "💬 Promise-to-Pay Intent Classifier"])
+    sim_tab1, sim_tab2 = st.tabs(["⚙️ Failed Mandate Diagnostic", "💬 Promise-to-Pay Intent Classifier"])
 
     with sim_tab1:
-        st.markdown("#### Run a Custom Failed Mandate Through the Full Pipeline")
+        st.markdown("#### Run Any Failed Mandate Through the Full Pipeline")
         c1, c2 = st.columns(2)
         with c1:
             test_name = st.text_input("Customer Name", "Ananya Verma")
@@ -939,7 +939,7 @@ elif navigation == "🧪 Live Simulator":
                 <div class="whatsapp-bubble">
                     <b>AutoPey Concierge (WhatsApp)</b><br>
                     {nudge_msg}<br>
-                    <small style="color: #94A3B8">Simulated — logged only, not dispatched</small>
+                    <small style="color: #94A3B8">Drafted & logged — not dispatched to live messaging</small>
                 </div>""", unsafe_allow_html=True)
                 st.caption(f"Message length: {len(nudge_msg)} characters (max 299)")
             elif not guardrail["allowed"]:

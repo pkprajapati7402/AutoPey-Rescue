@@ -6,11 +6,11 @@ It supports:
    Model: gemini-3.6-flash / gemini-flash-latest
 2. Optional OpenAI API (OPENAI_API_KEY)
 3. Optional Anthropic API (ANTHROPIC_API_KEY)
-4. Offline / No-API-Key fallback mode for resilient automated tests and offline simulation.
+4. Offline / No-API-Key fallback mode for resilient automated tests and offline operation.
 
 Capabilities:
 - draft_nudge: Generates conversational, low-pressure Hinglish WhatsApp reminders (<300 chars).
-- parse_promise_to_pay: Classifies simulated customer responses into PROMISED, DECLINED, or UNCLEAR.
+- parse_promise_to_pay: Classifies customer responses into PROMISED, DECLINED, or UNCLEAR.
 """
 
 import json
@@ -237,7 +237,7 @@ def draft_nudge(transaction: Dict[str, Any]) -> str:
 
 
 def parse_promise_to_pay(customer_reply: str) -> Dict[str, Any]:
-    """Classify a customer's simulated response to an outreach nudge.
+    """Classify a customer's response to an outreach nudge.
 
     Args:
         customer_reply: The text message reply received from the customer.

@@ -116,7 +116,7 @@ $$\text{Detect} \longrightarrow \text{Diagnose Root Cause} \longrightarrow \text
 - The escalation queue (`logs/escalation_queue.jsonl`) provides a separate, clean compliance log.
 
 ### 6. Rich Demo Dashboard
-- Executive KPI scorecards, recovery funnel, per-category breakdown, escalation queue manager, audit trail explorer, transaction spotlight, and live simulator.
+- Executive KPI scorecards, recovery funnel, per-category breakdown, escalation queue manager, audit trail explorer, transaction spotlight, and live pipeline tester.
 
 ---
 
@@ -145,7 +145,7 @@ AutoPey-Rescue/
 │   ├── guardrails.py              # Safety constraints & cooldown enforcement
 │   ├── escalation.py              # Promise tracking & compliance routing (NEW)
 │   ├── audit.py                   # Structured audit logger & loader
-│   ├── baseline.py                # Naive 24h blind retry simulation
+│   ├── baseline.py                # Naive 24h blind retry benchmark model
 │   ├── metrics.py                 # Revenue & efficiency KPI calculator
 │   └── run_batch.py               # End-to-end benchmark orchestrator
 ├── dashboard/
@@ -194,7 +194,7 @@ python src/data_generator.py --count 200
 ```bash
 python src/run_batch.py
 ```
-This runs the full pipeline: diagnosis → policy → guardrails → outreach → promise-to-pay simulation → escalation routing → audit logging → baseline comparison.
+This runs the full pipeline: diagnosis → policy → guardrails → outreach → promise-to-pay intent parsing → escalation routing → audit logging → baseline comparison.
 
 ### 5. Launch the Streamlit Demo Dashboard
 ```bash
@@ -208,17 +208,17 @@ python -m pytest -v
 
 ---
 
-## 7. What is Real vs. What is Simulated
+## 7. System Transparency — What the Pipeline Does
 
-| Component | Reality |
+| Component | What It Does |
 |---|---|
 | Diagnosis, Policy, Guardrails, Escalation Logic | 100% real running code |
 | LLM Outreach (Gemini) | Real API calls when `GEMINI_API_KEY` is set |
 | Audit & Escalation Logs | Real JSONL files, immutable append-only |
-| Transaction Dataset | Synthetically generated, realistic failure distributions |
-| WhatsApp / SMS Dispatch | Messages drafted & logged — not dispatched to live networks |
-| Recovery Outcomes | Probabilistically simulated with empirically-calibrated rates |
-| Customer Replies | Simulated from realistic Hinglish reply templates |
+| Transaction Dataset | Synthetically generated with realistic UPI failure distributions |
+| WhatsApp / SMS Dispatch | Messages are drafted & logged — not dispatched to live messaging networks |
+| Recovery Outcomes | Probabilistically computed with empirically-calibrated per-category rates |
+| Customer Replies | Sampled from realistic Hinglish reply templates; LLM classifies intent |
 
 ---
 

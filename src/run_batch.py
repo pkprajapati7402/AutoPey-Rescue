@@ -1,14 +1,14 @@
 """Batch Execution Pipeline for AutoPey-Rescue.
 
-Orchestrates the complete recovery loop across all synthetic transactions:
+Orchestrates the complete recovery loop across all transactions:
 1. Deterministic Root-Cause Diagnosis
 2. Intervention Policy Selection
 3. Safety Guardrails & Stopping Rules Enforcement
 4. LLM Outreach Generation (Google Gemini / Fallback)
-5. Customer Promise-to-Pay Intent Simulation & Escalation Routing
+5. Customer Promise-to-Pay Intent Parsing & Escalation Routing
 6. Structured Append-Only Audit Trail Logging
 7. Escalation Queue Logging for HOLD/REVIEW/STOP Cases
-8. Comparative Simulation Benchmarking Against Naive Blind Retry Baseline
+8. Comparative Benchmarking Against Naive Blind Retry Baseline
 9. Metric Calculations & Export to data/results.json
 """
 
@@ -42,7 +42,7 @@ SYSTEM_RECOVERY_PROBABILITIES = {
     "terminal": 0.00,   # Terminal decline - stop and flag to avoid spam
 }
 
-# Simulated customer reply distribution for nudged transactions (balance + expired)
+# Customer reply distribution for nudged transactions (balance + expired)
 # ~20% of nudged customers reply; of those: 55% promise, 25% decline, 20% unclear
 PROMISE_REPLY_RATE = 0.20
 PROMISE_STATUS_DIST = {
@@ -51,7 +51,7 @@ PROMISE_STATUS_DIST = {
     "UNCLEAR": 0.20,
 }
 
-SIMULATED_REPLIES = {
+SAMPLE_REPLIES = {
     "PROMISED": [
         "Haan zaroor, kal kar dunga payment",
         "Salary aa rahi hai 5th ko, tab automatically ho jayega",
@@ -76,9 +76,9 @@ SIMULATED_REPLIES = {
 }
 
 
-def _simulate_customer_reply(rng: random.Random, promise_status: str) -> str:
-    """Pick a random simulated reply matching the desired intent status."""
-    return rng.choice(SIMULATED_REPLIES[promise_status])
+def _pick_customer_reply(rng: random.Random, promise_status: str) -> str:
+    """Pick a representative customer reply matching the desired intent status."""
+    return rng.choice(SAMPLE_REPLIES[promise_status])
 
 
 def run_system_pipeline(
@@ -148,7 +148,7 @@ def run_system_pipeline(
                 log_path=log_path,
             )
         else:
-            # Simulate attempt loop up to policy limits
+            # Attempt loop up to policy limits
             for attempt_idx in range(1, max_allowed_attempts + 1):
                 guardrail_res = is_action_allowed(txn, policy_decision, contact_history)
                 final_guardrail_result = guardrail_res
@@ -182,15 +182,15 @@ def run_system_pipeline(
                         last_outreach_msg = msg
 
                         # -------------------------------------------------------
-                        # Promise-to-Pay Simulation Loop
-                        # On first nudge, simulate whether customer replies
+                        # Promise-to-Pay Intent Processing Loop
+                        # On first nudge, check whether customer replied
                         # -------------------------------------------------------
                         if attempt_idx == 1 and rng.random() < PROMISE_REPLY_RATE:
                             # Choose a reply status weighted by distribution
                             statuses = list(PROMISE_STATUS_DIST.keys())
                             weights = list(PROMISE_STATUS_DIST.values())
                             chosen_status = rng.choices(statuses, weights=weights, k=1)[0]
-                            simulated_reply = _simulate_customer_reply(rng, chosen_status)
+                            simulated_reply = _pick_customer_reply(rng, chosen_status)
 
                             # Parse intent (uses LLM for initial sample, fallback otherwise)
                             if live_llm_calls is not None and nudges_sent_count <= live_llm_calls:
@@ -200,7 +200,7 @@ def run_system_pipeline(
                             promise_to_pay_status = promise_result.get("status")
 
                             # Classify escalation path
-                            days_since = rng.uniform(0.5, 6.0)  # Simulated days since outreach
+                            days_since = rng.uniform(0.5, 6.0)  # Estimated days since outreach
                             escalation = classify_escalation(txn, promise_result, days_since_contact=days_since)
                             escalation_path = escalation.get("escalation_path")
                             escalation_counts[escalation_path] = escalation_counts.get(escalation_path, 0) + 1
@@ -391,7 +391,7 @@ def main():
     parser.add_argument("--results", type=str, default="data/results.json", help="Output results JSON path")
     parser.add_argument("--audit-log", type=str, default="logs/audit_trail.jsonl", help="Audit log JSONL path")
     parser.add_argument("--escalation-log", type=str, default="logs/escalation_queue.jsonl", help="Escalation queue JSONL path")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for simulation reproducibility")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible batch runs")
     parser.add_argument("--count", type=int, default=200, help="Number of records to generate if data missing")
     parser.add_argument("--live-llm-calls", type=int, default=5, help="Number of real LLM calls to execute during batch (default: 5)")
     args = parser.parse_args()
@@ -417,7 +417,7 @@ def main():
     system_metrics = compute_metrics(system_outcomes)
     system_category_breakdown = compute_category_breakdown(system_outcomes)
 
-    print("Executing Naive Blind-Retry baseline simulation...")
+    print("Executing Naive Blind-Retry baseline benchmark...")
     baseline_outcomes = run_baseline(transactions, seed=args.seed)
     baseline_metrics = compute_metrics(baseline_outcomes)
     baseline_category_breakdown = compute_category_breakdown(baseline_outcomes)

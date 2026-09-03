@@ -40,9 +40,9 @@ During the development and testing of **AutoPey-Rescue**, we encountered several
 
 ---
 
-### Obstacle 4: Ensuring Statistical Superiority Without Fudging Simulation Numbers
+### Obstacle 4: Calibrating Recovery Probabilities for Honest Benchmarking
 
-- **What Broke**: In initial naive simulations, if blind retries were given uncalibrated high success rates on terminal declines or expired mandates, the naive baseline would appear artificially competitive with the bounded system.
+- **What Broke**: In initial benchmarks, if blind retries were given uncalibrated high success rates on terminal declines or expired mandates, the naive baseline would appear artificially competitive with the bounded system.
 - **Why It Happened**: In real-world banking operations, blind retries against cancelled mandates (`HARD_DECLINE`) or expired mandates have near-zero recovery rates, whereas bank timeouts (`TECH_TIMEOUT`) have high recovery rates.
 - **How It Was Fixed**: Calibrated the recovery probabilities to reflect empirical payment gateway mechanics:
   - Expired mandates require customer re-authorization (blind retry ~5% vs. smart re-auth link ~42%).

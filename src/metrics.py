@@ -13,7 +13,7 @@ from typing import List, Dict, Any
 
 
 def compute_metrics(outcomes: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Compute comprehensive revenue recovery metrics from a list of simulation outcomes.
+    """Compute comprehensive revenue recovery metrics from a batch of pipeline outcomes.
 
     Args:
         outcomes: List of outcome dictionaries containing:
