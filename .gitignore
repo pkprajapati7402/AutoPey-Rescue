@@ -9,10 +9,8 @@ __pycache__/
 *$py.class
 .pytest_cache/
 
-# Data and logs (keep folder structure via .gitkeep)
-logs/*.jsonl
-logs/*.log
-data/*.json
+# Data and logs — pre-generated files are committed for Streamlit Cloud deployment
+# Only exclude large raw exports that should not be versioned
 !data/.gitkeep
 !logs/.gitkeep
 

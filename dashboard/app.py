@@ -198,10 +198,32 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
 # ─── Data Loaders ─────────────────────────────────────────────────────────────
-@st.cache_data(ttl=30)
+def _ensure_data_exists():
+    """Auto-generate data and results if missing (Streamlit Cloud cold start)."""
+    results_path = "data/results.json"
+    txn_path = "data/synthetic_transactions.json"
+    if not os.path.exists(results_path):
+        import subprocess
+        status_placeholder = st.empty()
+        if not os.path.exists(txn_path):
+            status_placeholder.info("⏳ Generating synthetic transaction dataset...")
+            subprocess.run(
+                [sys.executable, "src/data_generator.py", "--count", "200"],
+                capture_output=True
+            )
+        status_placeholder.info("⏳ Running AutoPey Rescue batch pipeline — this takes ~15 seconds...")
+        subprocess.run(
+            [sys.executable, "src/run_batch.py",
+             "--live-llm-calls", "0"],   # skip live LLM on cold start
+            capture_output=True
+        )
+        status_placeholder.empty()
+
+
+@st.cache_data(ttl=300)
 def load_results_data() -> dict:
+    _ensure_data_exists()
     results_path = "data/results.json"
     if os.path.exists(results_path):
         with open(results_path, "r", encoding="utf-8") as f:
@@ -209,7 +231,7 @@ def load_results_data() -> dict:
     return {}
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=300)
 def load_transactions_data() -> list:
     path = "data/synthetic_transactions.json"
     if os.path.exists(path):
