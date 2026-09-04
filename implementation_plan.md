@@ -5,7 +5,7 @@
 ### What's Already Solid
 - All 29 tests pass (clean, well-structured)
 - Core pipeline: diagnosis → policy → guardrails → audit → metrics fully operational
-- Smart baseline comparison with compelling numbers (4.28x efficiency advantage)
+- Smart baseline comparison with compelling numbers (3.32x efficiency advantage)
 - Real audit trail in JSONL format
 
 ### What Needs Upgrading

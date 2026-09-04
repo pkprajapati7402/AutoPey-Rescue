@@ -138,7 +138,7 @@
 ### `src/baseline.py`
 - **Purpose**: Models the legacy naive blind-retry approach for benchmarking comparison.
 - **Behavior**: Every failed transaction is retried every 24 hours, up to 3 times, with a generic message, no root-cause logic, no stop conditions.
-- **Recovery Probabilities** (calibrated to real-world patterns):
+- **Recovery Probabilities** (modeled from known failure semantics — assumptions, not measured data):
   - `TECH_TIMEOUT`: 70% (transient glitches resolve on retry)
   - `INSUFFICIENT_BALANCE`: 30% (blind next-day retry rarely catches funds)
   - `MANDATE_EXPIRED`: 5% (retrying expired mandate almost always fails)

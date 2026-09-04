@@ -44,9 +44,9 @@ During the development and testing of **AutoPey-Rescue**, we encountered several
 
 - **What Broke**: In initial benchmarks, if blind retries were given uncalibrated high success rates on terminal declines or expired mandates, the naive baseline would appear artificially competitive with the bounded system.
 - **Why It Happened**: In real-world banking operations, blind retries against cancelled mandates (`HARD_DECLINE`) or expired mandates have near-zero recovery rates, whereas bank timeouts (`TECH_TIMEOUT`) have high recovery rates.
-- **How It Was Fixed**: Calibrated the recovery probabilities to reflect empirical payment gateway mechanics:
+- **How It Was Fixed**: Calibrated the recovery probabilities to reflect known failure semantics in payment systems:
   - Expired mandates require customer re-authorization (blind retry ~5% vs. smart re-auth link ~42%).
   - Insufficient balance requires waiting for funds / salary cycles (blind 24h retry ~30% vs. 48h hold + Hinglish nudge ~68%).
   - Technical timeouts resolve faster with short cooldown auto-retries (~88% in <12 hours).
   - Terminal cancellations are stopped immediately (0 touches, 0 spam).
-  - Result: AutoPey-Rescue achieved **4.28x higher INR recovered per customer contact** with a 72.8% reduction in customer spam.
+  - Result: AutoPey-Rescue achieved **3.32x higher INR recovered per customer contact** with a 74.1% reduction in customer contacts.

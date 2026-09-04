@@ -217,7 +217,7 @@ python -m pytest -v
 | Audit & Escalation Logs | Real JSONL files, immutable append-only |
 | Transaction Dataset | Synthetically generated with realistic UPI failure distributions |
 | WhatsApp / SMS Dispatch | Messages are drafted & logged — not dispatched to live messaging networks |
-| Recovery Outcomes | Probabilistically computed with empirically-calibrated per-category rates |
+| Recovery Outcomes | Probabilistically computed — modeled from known failure semantics, not measured data |
 | Customer Replies | Sampled from realistic Hinglish reply templates; LLM classifies intent |
 
 ---
